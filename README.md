@@ -1,123 +1,187 @@
 # Triton Backend (Node.js + TypeScript + Express + PostgreSQL + Cloudflare R2)
 
-API RESTful para gerenciar dados de eventos Triton e processar uploads de mídia para o Cloudflare R2 com otimização automática.
+RESTful API designed to manage Triton World Series event data, authenticate administrative users, and handle automated media optimization and uploads directly to Cloudflare R2 storage.
 
 ---
 
-## ⚙️ Configuração das Variáveis de Ambiente
+## ⚙️ Environment Configuration
 
-No diretório `backend/`, crie ou edite o seu `.env` com base no [`.env.example`](file:///Users/guerlak/Workspace/projetos/triton-web/backend/.env.example):
+In the `backend/` directory, create or edit your `.env` file based on [`.env.example`](./.env.example):
 
 ```env
 PORT=3001
 NODE_ENV=development
 CORS_ORIGIN=*
 
-# PostgreSQL
+# PostgreSQL Connection String
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/triton_db?schema=public"
 
+# JWT Authentication
+JWT_SECRET="your_jwt_secret_key_here"
+
 # Cloudflare R2 Object Storage
-CLOUDFLARE_ACCOUNT_ID="seu_account_id"
-R2_ACCESS_KEY_ID="seu_access_key_id"
-R2_SECRET_ACCESS_KEY="seu_secret_access_key"
+CLOUDFLARE_ACCOUNT_ID="your_cloudflare_account_id"
+CLOUDFLARE_API_TOKEN="your_cloudflare_api_token"
+R2_ACCESS_KEY_ID="your_r2_access_key_id"
+R2_SECRET_ACCESS_KEY="your_r2_secret_access_key"
 R2_BUCKET_NAME="triton-media"
 R2_PUBLIC_URL="https://pub-xxxxxx.r2.dev"
 ```
 
 ---
 
-## 🚀 Como Executar
+## 🚀 Getting Started
 
-### 1. Instalar as dependências
+### 1. Start Local PostgreSQL with Docker
 ```bash
 cd backend
+docker compose up -d
+```
+> Starts PostgreSQL 16 on port `5432` with database `triton_db` and user/password `postgres:postgres`.
+
+### 2. Install Dependencies
+```bash
 npm install
 ```
 
-### 2. Inicializar o banco de dados e seed de eventos
+### 3. Initialize Database Schema & Seed Data
 ```bash
 npm run db:init
 ```
+> Executes `database/schema.sql` (creates tables, relations, enums, indexes, and initial admin user `admin@triton.com`) and seeds default events.
 
-### 3. Iniciar o servidor em desenvolvimento
+### 4. Run Development Server
 ```bash
 npm run dev
 ```
-Servidor disponível em: `http://localhost:3001`
+The server will start at: `http://localhost:3001`
+
+### 5. Build & Run for Production
+```bash
+npm run build
+npm start
+```
 
 ---
 
-## 📡 Endpoints da API
+## 📡 API Endpoints
 
-A URL base da API é `http://localhost:3001/api`.
+Base URL: `http://localhost:3001/api`
 
-### 1. Upload de Arquivos (`/api/upload`)
+### 1. Authentication (`/api/auth`)
 
-| Método | Endpoint | Descrição |
-|---|---|---|
-| `POST` | `/api/upload` | Envia **1 arquivo** (`multipart/form-data`, campo `file`). Converte imagens automaticamente para WebP otimizado |
-| `POST` | `/api/upload/multiple` | Envia **múltiplos arquivos** (campo `files`, até 10 arquivos simultâneos) |
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| `POST` | `/api/auth/login` | Authenticate admin user with email and password | No |
+| `GET` | `/api/auth/me` | Retrieve profile of the currently authenticated user | Yes (`Bearer <token>`) |
 
-#### Exemplo de requisição no Frontend Admin (Upload):
+### 2. Events (`/api/events`)
+
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| `GET` | `/api/events` | List all events (supports query filters) | No |
+| `GET` | `/api/events/:idOrSlug` | Get complete event details (formats, schedule, resort, POIs) | No |
+| `POST` | `/api/events` | Create a new event | Yes (`Bearer <token>`) |
+| `PUT` | `/api/events/:idOrSlug` | Update an existing event | Yes (`Bearer <token>`) |
+| `DELETE` | `/api/events/:idOrSlug` | Delete an event (cascades to related records) | Yes (`Bearer <token>`) |
+
+#### Supported Query Filters (`GET /api/events`):
+- `eventFormat`: `triton1` or `triton3`
+- `year`: e.g. `2026`, `2027`
+- `status`: `Confirmed`, `Planned`, or `Completed`
+- `language`: `pt-BR` or `en`
+- `search`: Case-insensitive text search across title, location, country, and slug
+
+*Example:*
+```http
+GET /api/events?eventFormat=triton3&year=2026
+```
+
+---
+
+### 3. Media Upload (`/api/upload`)
+
+Integrates with **Cloudflare R2** using `@aws-sdk/client-s3`. Uploaded images are automatically resized (max width 2560px) and converted to optimized **WebP** via `sharp`. PDFs (such as athlete Race Guides) are stored in their original format.
+
+| Method | Endpoint | Description | Auth Required |
+|---|---|---|---|
+| `POST` | `/api/upload` | Upload a **single file** (`multipart/form-data`, field: `file`) | Yes (`Bearer <token>`) |
+| `POST` | `/api/upload/multiple` | Upload **multiple files** (field: `files`, up to 10 files) | Yes (`Bearer <token>`) |
+
+#### Frontend Upload Example:
 ```typescript
 const formData = new FormData();
 formData.append("file", fileInput.files[0]);
-formData.append("folder", "events/salvador-2026"); // opcional
+formData.append("folder", "events/salvador-2026"); // optional folder path
 
 const response = await fetch("http://localhost:3001/api/upload", {
   method: "POST",
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
   body: formData,
 });
 
 const { data } = await response.json();
-console.log(data.url); // "https://pub-xxx.r2.dev/events/salvador-2026/1730335000-banner-a1b2c3.webp"
+console.log(data.url); 
+// Returns public CDN URL: "https://pub-xxx.r2.dev/events/salvador-2026/1730335000-banner-a1b2c3.webp"
 ```
 
 ---
 
-### 2. Eventos (`/api/events`)
+## 🗄️ Database Architecture
 
-| Método | Endpoint | Descrição |
-|---|---|---|
-| `GET` | `/api/events` | Lista eventos (filtros: `eventFormat`, `year`, `status`, `language`, `search`) |
-| `GET` | `/api/events/:idOrSlug` | Retorna o evento completo com modalidades, cronograma, hotel e POIs |
-| `POST` | `/api/events` | Cria um novo evento |
-| `PUT` | `/api/events/:idOrSlug` | Atualiza um evento existente |
-| `DELETE` | `/api/events/:idOrSlug` | Remove um evento (cascata no banco) |
+- **DDL Schema**: [`database/schema.sql`](./database/schema.sql)
+- **Database Initializer**: [`src/database/init.ts`](./src/database/init.ts)
+- **Native Connection Pool**: [`src/config/database.ts`](./src/config/database.ts)
+
+### Core Tables:
+- `users`: Administrative user credentials with Bcrypt password hashing.
+- `events`: Core event records, metadata, hero imagery, and status flags.
+- `athlete_areas`: 1:1 relation containing race results, tracking, and guide links.
+- `event_formats`: 1:N disciplines (swim, bike, run) with distance tables and Strava segments.
+- `schedule_days` & `schedule_events`: Multi-day race itinerary with granular time slots.
+- `resorts`: Official partner hotel information, benefits, and direct booking links.
+- `points_of_interest` & `logistics_items`: Local tourism, airports, and transport access details.
 
 ---
 
-## 📁 Estrutura de Pastas do Backend
+## 📁 Directory Structure
 
 ```text
 backend/
 ├── database/
-│   └── schema.sql              # DDL completo do PostgreSQL
+│   └── schema.sql              # Complete PostgreSQL DDL schema & constraints
 ├── src/
 │   ├── config/
-│   │   ├── database.ts         # Pool nativo do PostgreSQL (pg)
-│   │   └── r2.ts               # Conexão S3 com Cloudflare R2
+│   │   ├── database.ts         # Native PostgreSQL (pg) connection pool
+│   │   └── r2.ts               # Cloudflare R2 S3 client configuration
 │   ├── controllers/
-│   │   ├── event.controller.ts # Lógica HTTP de eventos
-│   │   └── upload.controller.ts# Lógica HTTP de upload
+│   │   ├── auth.controller.ts   # Authentication handlers
+│   │   ├── event.controller.ts  # Event CRUD handlers
+│   │   └── upload.controller.ts # Media upload handlers
 │   ├── data/
-│   │   └── initialEvents.ts    # Seed com eventos do eventData.ts
+│   │   └── initialEvents.ts    # Seed data based on eventData.ts
 │   ├── database/
-│   │   └── init.ts             # Script de inicialização (npm run db:init)
+│   │   └── init.ts             # Schema runner and seeder (npm run db:init)
 │   ├── middlewares/
-│   │   ├── errorHandler.ts     # Tratamento global de erros
-│   │   └── upload.middleware.ts# Multer em memória com filtro de mimetypes
+│   │   ├── auth.middleware.ts  # JWT verification middleware
+│   │   ├── errorHandler.ts     # Global Express error handler
+│   │   └── upload.middleware.ts# Multer memory storage and MIME filtering
 │   ├── routes/
+│   │   ├── auth.routes.ts
 │   │   ├── event.routes.ts
 │   │   ├── upload.routes.ts
 │   │   └── index.ts
 │   ├── services/
-│   │   ├── event.service.ts    # Queries SQL diretas para eventos
-│   │   └── storage.service.ts  # Otimização com Sharp e envio para R2
+│   │   ├── auth.service.ts     # Bcrypt & JWT business logic
+│   │   ├── event.service.ts    # Direct SQL queries & relational aggregation
+│   │   └── storage.service.ts  # Sharp image compression & R2 dispatch
 │   ├── types/
-│   │   └── event.types.ts      # Tipagens TypeScript completas
-│   ├── app.ts                  # Configuração do Express e CORS
-│   └── server.ts               # Ponto de entrada do servidor
+│   │   └── event.types.ts      # Complete TypeScript interfaces
+│   ├── app.ts                  # Express application & global middleware setup
+│   └── server.ts               # Server entry point & connection testing
+├── docker-compose.yml          # Local PostgreSQL 16 container definition
 ├── .env
 ├── .env.example
 ├── package.json
