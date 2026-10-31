@@ -1,0 +1,238 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum EventFormat {
+  triton1
+  triton3
+}
+
+enum EventStatus {
+  Confirmed
+  Planned
+  Completed
+}
+
+enum RegistrationStatus {
+  Open
+  Closed
+  Hold
+}
+
+enum DisciplineType {
+  swim
+  bike
+  run
+}
+
+model Event {
+  id                    String              @id // ex: 'salvador-2026', 'rio-2026'
+  slug                  String              @unique
+  language              String              @default("pt-BR")
+  eventFormat           EventFormat         @map("event_format")
+  title                 String
+  subtitle              String?
+  location              String
+  venue                 String?
+  dateText              String              @map("date_text")
+  fullDateText          String              @map("full_date_text")
+  targetDate            DateTime            @map("target_date")
+  year                  Int
+  country               String              @default("Brazil")
+  flag                  String              @default("🇧🇷")
+  status                EventStatus         @default(Planned)
+  registrationLink      String              @default("#") @map("registration_link")
+  registrationStatus    RegistrationStatus? @default(Open) @map("registration_status")
+  isEventOn             Boolean             @default(true) @map("is_event_on")
+  isRegistrationClosed  Boolean             @default(false) @map("is_registration_closed")
+
+  // Hero
+  heroBackgroundImage   String?             @map("hero_background_image")
+  heroLogoImage         String?             @map("hero_logo_image")
+
+  // Sections
+  infoTitle             String?             @map("info_title")
+  infoSubtitle          String?             @map("info_subtitle")
+  infoDescription       String?             @map("info_description")
+
+  scoringTitle          String?             @map("scoring_title")
+  scoringDescription    String?             @map("scoring_description")
+
+  scheduleTitle         String?             @map("schedule_title")
+  scheduleSubtitle      String?             @map("schedule_subtitle")
+  scheduleImportantNote String?             @map("schedule_important_note")
+
+  locationsDescription  String?             @map("locations_description")
+
+  extraEvent            Json?               @map("extra_event")
+  afterMovieUrl         String?             @map("after_movie_url")
+
+  createdAt             DateTime            @default(now()) @map("created_at")
+  updatedAt             DateTime            @updatedAt @map("updated_at")
+
+  // Relations
+  athleteArea           AthleteArea?
+  resort                Resort?
+  formats               EventFormatDetail[]
+  scheduleDays          ScheduleDay[]
+  pois                  PointOfInterest[]
+  logistics             LogisticsItem[]
+  partners              Partner[]
+  testimonials          Testimonial[]
+
+  @@index([slug])
+  @@index([year, eventFormat])
+  @@index([status])
+  @@map("events")
+}
+
+model AthleteArea {
+  id                String   @id @default(uuid())
+  eventId           String   @unique @map("event_id")
+  liveResultsUrl    String?  @map("live_results_url")
+  raceGuideLink     String?  @map("race_guide_link")
+  startListApiUrl   String?  @map("start_list_api_url")
+  mediaPictureUrl   String?  @map("media_picture_url")
+  videoBriefingUrl  String?  @map("video_briefing_url")
+  liveResultsApiUrl String?  @map("live_results_api_url")
+  topFiveApiUrl     String?  @map("top_five_api_url")
+  createdAt         DateTime @default(now()) @map("created_at")
+  updatedAt         DateTime @updatedAt @map("updated_at")
+
+  event             Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("athlete_areas")
+}
+
+model EventFormatDetail {
+  id               String         @id @default(uuid())
+  eventId          String         @map("event_id")
+  discipline       DisciplineType
+  dayLabel         String         @map("day_label")
+  dateLabel        String         @map("date_label")
+  startTime        String         @map("start_time")
+  title            String
+  description      String?
+  extraDescription String?        @map("extra_description")
+  imageUrl         String?        @map("image_url")
+  videoUrl         String?        @map("video_url")
+  stravaId         String?        @map("strava_id")
+  stravaIds        Json?          @map("strava_ids")
+  distances        Json           @default("[]")
+  details          Json?          @default("[]")
+  orderIndex       Int            @default(0) @map("order_index")
+
+  event            Event          @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, discipline])
+  @@map("event_formats")
+}
+
+model ScheduleDay {
+  id         String          @id // ex: 'friday', 'saturday'
+  eventId    String          @map("event_id")
+  dateText   String          @map("date_text")
+  title      String
+  subtitle   String
+  orderIndex Int             @default(0) @map("order_index")
+  events     ScheduleEvent[]
+
+  event      Event           @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("schedule_days")
+}
+
+model ScheduleEvent {
+  id            String      @id @default(uuid())
+  scheduleDayId String      @map("schedule_day_id")
+  timeText      String?     @map("time_text")
+  title         String
+  description   String?
+  location      String?
+  isCutoff      Boolean     @default(false) @map("is_cutoff")
+  details       Json?       @default("[]")
+  orderIndex    Int         @default(0) @map("order_index")
+
+  day           ScheduleDay @relation(fields: [scheduleDayId], references: [id], onDelete: Cascade)
+
+  @@map("schedule_events")
+}
+
+model PointOfInterest {
+  id          String @id @default(uuid())
+  eventId     String @map("event_id")
+  icon        String
+  title       String
+  description String
+  orderIndex  Int    @default(0) @map("order_index")
+
+  event       Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("points_of_interest")
+}
+
+model LogisticsItem {
+  id         String @id @default(uuid())
+  eventId    String @map("event_id")
+  icon       String
+  title      String
+  detail     String
+  sub        String
+  color      String
+  orderIndex Int    @default(0) @map("order_index")
+
+  event      Event  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("logistics_items")
+}
+
+model Resort {
+  id           String   @id @default(uuid())
+  eventId      String   @unique @map("event_id")
+  title        String
+  description  String
+  imageUrl     String?  @map("image_url")
+  benefits     Json     @default("[]")
+  buttonText   String   @default("Reservar") @map("button_text")
+  whatsappLink String?  @map("whatsapp_link")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  event        Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("resorts")
+}
+
+model Partner {
+  id         String  @id @default(uuid())
+  eventId    String  @map("event_id")
+  name       String
+  logoUrl    String  @map("logo_url")
+  websiteUrl String? @map("website_url")
+  orderIndex Int     @default(0) @map("order_index")
+
+  event      Event   @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("partners")
+}
+
+model Testimonial {
+  id         String  @id @default(uuid())
+  eventId    String? @map("event_id")
+  author     String
+  company    String?
+  role       String?
+  quote      String
+  avatarUrl  String? @map("avatar_url")
+  socialLink String? @map("social_link")
+  orderIndex Int     @default(0) @map("order_index")
+
+  event      Event?  @relation(fields: [eventId], references: [id], onDelete: Cascade)
+
+  @@map("testimonials")
+}
+
