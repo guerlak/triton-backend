@@ -12,6 +12,18 @@ services:
     volumes:
       - triton_pgdata:/var/lib/postgresql/data
 
+  api:
+    build: .
+    container_name: triton-api
+    restart: always
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/triton_db?schema=public
+    depends_on:
+      - postgres
+
 volumes:
   triton_pgdata:
-

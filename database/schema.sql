@@ -243,3 +243,11 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- Usuário Admin padrão (admin@triton.com / admin123)
+INSERT INTO users (name, email, password_hash, role)
+VALUES (
+    'Administrador Triton',
+    'admin@triton.com',
+    '$2b$10$O./UceZPLH/6EVDBKS1nDOrv3JF2J9yDvlOAPSqy2Z7oVHyPqs9k.',
+    'admin'
+) ON CONFLICT (email) DO NOTHING;
