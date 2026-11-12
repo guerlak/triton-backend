@@ -146,6 +146,36 @@ console.log(data.url);
 
 ---
 
+## 🌐 Deploy no DigitalOcean (Droplet)
+
+### 1. No Droplet (Primeiro acesso):
+Clone o repositório e configure as variáveis de ambiente:
+```bash
+git clone https://github.com/guerlak/triton-backend.git
+cd triton-backend
+cp .env.example .env
+nano .env # configure suas credenciais de produção
+```
+
+### 2. Executar Deploy Automatizado:
+```bash
+chmod +x deploy.sh
+./deploy.sh
+```
+
+### 3. Configurar Nginx & SSL:
+Copie a configuração para o Nginx e ative o certificado SSL via Certbot:
+```bash
+sudo cp nginx/triton-api.conf /etc/nginx/sites-available/triton-api
+# Edite para colocar seu domínio ou IP
+sudo nano /etc/nginx/sites-available/triton-api
+sudo ln -s /etc/nginx/sites-available/triton-api /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d seu-dominio.com
+```
+
+---
+
 ## 📁 Directory Structure
 
 ```text
