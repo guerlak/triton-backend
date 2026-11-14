@@ -1,5 +1,5 @@
 import { query } from "../config/database";
-import { EventData, EventFilterQuery } from "../types/event.types";
+import { AthleteArea, EventData, EventFilterQuery } from "../types/event.types";
 
 class EventService {
   /**
@@ -257,6 +257,15 @@ class EventService {
     ];
 
     const res = await query(sql, values);
+
+    if (payload.athleteArea) {
+      await this.upsertAthleteArea(id, payload.athleteArea);
+      const created = await this.getByIdOrSlug(id);
+      if (created) {
+        return created;
+      }
+    }
+
     return this.mapRowToEventData(res.rows[0]);
   }
 
@@ -315,7 +324,52 @@ class EventService {
       await query(sql, values);
     }
 
+    if (updates.athleteArea !== undefined && updates.athleteArea !== null) {
+      await this.upsertAthleteArea(eventId, updates.athleteArea);
+    }
+
     return this.getByIdOrSlug(eventId);
+  }
+
+  /**
+   * Cria ou atualiza os dados da Área do Atleta de um evento (upsert por event_id)
+   */
+  private async upsertAthleteArea(eventId: string, athleteArea: AthleteArea): Promise<void> {
+    const fieldMap: Record<keyof AthleteArea, string> = {
+      liveResultsUrl: "live_results_url",
+      raceGuideLink: "race_guide_link",
+      startListApiUrl: "start_list_api_url",
+      mediaPictureUrl: "media_picture_url",
+      videoBriefingUrl: "video_briefing_url",
+      liveResultsApiUrl: "live_results_api_url",
+      topFiveApiUrl: "top_five_api_url",
+    };
+
+    const columns = ["event_id"];
+    const values: any[] = [eventId];
+    const placeholders = ["$1"];
+    const updateClauses: string[] = [];
+
+    for (const [key, col] of Object.entries(fieldMap)) {
+      const val = (athleteArea as Record<string, string | undefined>)[key];
+      if (val !== undefined) {
+        values.push(val || null);
+        columns.push(col);
+        placeholders.push(`$${values.length}`);
+        updateClauses.push(`${col} = EXCLUDED.${col}`);
+      }
+    }
+
+    updateClauses.push("updated_at = NOW()");
+
+    const sql = `
+      INSERT INTO athlete_areas (${columns.join(", ")})
+      VALUES (${placeholders.join(", ")})
+      ON CONFLICT (event_id)
+      DO UPDATE SET ${updateClauses.join(", ")}
+    `;
+
+    await query(sql, values);
   }
 
   /**
